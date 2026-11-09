@@ -1,0 +1,77 @@
+{
+    "openapi": "3.1.0",
+    "paths": {
+        "/widgets": {
+            "get": {
+                "summary": "List widgets",
+                "description": "Retrieve the widgets.",
+                "parameters": [
+                    {"name": "search", "in": "query", "description": "Filter by name.", "schema": {"type": "string"}},
+                    {"name": "include", "in": "query", "schema": {"type": "string"}}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {"type": "array", "items": {"$ref": "#/components/schemas/Widget"}},
+                                        "secret": {"type": "string"}
+                                    },
+                                    "required": ["data", "secret"]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create a widget",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {"name": {"type": "string"}},
+                                "required": ["name"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Widget"}}}}
+                }
+            }
+        },
+        "/widgets/{widget}": {
+            "get": {
+                "summary": "Show a widget",
+                "parameters": [{"name": "widget", "in": "path", "required": true, "schema": {"type": "string"}}],
+                "responses": {
+                    "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Widget"}}}}
+                }
+            },
+            "delete": {
+                "summary": "Delete a widget",
+                "parameters": [{"name": "widget", "in": "path", "required": true, "schema": {"type": "string"}}],
+                "responses": {"204": {"description": "No content"}}
+            }
+        },
+        "/me": {
+            "get": {
+                "summary": "Show the current user",
+                "responses": {"200": {"content": {"application/json": {"schema": {"type": "object"}}}}}
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Widget": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+                "required": ["id", "name"]
+            }
+        }
+    }
+}
