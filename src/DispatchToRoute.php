@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -60,6 +61,16 @@ class DispatchToRoute
      */
     public function __invoke(Route $route, string $method, array $arguments, ?Authenticatable $user): Response
     {
+        // The documented path parameters are camel cased, e.g. "projectPhase" for "{project_phase}".
+        foreach ($this->parameterNames($route) as $name) {
+            $camel = Str::camel($name);
+
+            if ($camel !== $name && array_key_exists($camel, $arguments)) {
+                $arguments[$name] = $arguments[$camel];
+                unset($arguments[$camel]);
+            }
+        }
+
         $url = $this->url($route, $arguments);
         $request = $this->makeRequest($url, $method, Arr::except($arguments, $this->parameterNames($route)));
 

@@ -3,6 +3,7 @@
 namespace Lier\McpTools\OpenApi;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Lier\McpTools\Exceptions\InvalidApiDocumentationException;
 
 /**
@@ -74,7 +75,12 @@ final readonly class Document
             $path = substr($path, strlen($prefix));
         }
 
-        $operation = $this->document->schema('paths')?->schema($path)?->schema(strtolower($method));
+        $paths = $this->document->schema('paths');
+
+        // Scramble names path parameters after the action's arguments, so "{project_phase}" is documented as "{projectPhase}".
+        $camelPath = preg_replace_callback('/\{(\w+)(\??)\}/', fn (array $match) => '{' . Str::camel($match[1]) . $match[2] . '}', $path);
+
+        $operation = ($paths?->schema($path) ?? $paths?->schema((string) $camelPath))?->schema(strtolower($method));
 
         return is_null($operation) ? null : Operation::from($operation);
     }
