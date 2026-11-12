@@ -129,7 +129,7 @@ class RouteTool extends Tool
     #[Override]
     public function annotations(): array
     {
-        return $this->definition->attribute->annotations($this->definition->method);
+        return [...parent::annotations(), ...$this->definition->attribute->annotations($this->definition->method)];
     }
 
     /**

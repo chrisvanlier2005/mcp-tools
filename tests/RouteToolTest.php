@@ -11,6 +11,7 @@ use Lier\McpTools\DispatchToRoute;
 use Lier\McpTools\RouteTool;
 use Lier\McpTools\RouteToolDiscovery;
 use Lier\McpTools\Tests\Fixtures\FakeDispatchToRoute;
+use Lier\McpTools\Tests\Fixtures\IdempotentRouteTool;
 use Lier\McpTools\Tests\Fixtures\RestrictedRouteTool;
 
 final class RouteToolTest extends TestCase
@@ -41,6 +42,16 @@ final class RouteToolTest extends TestCase
         $this->assertSame(['destructiveHint' => true], $tool->annotations());
         $this->assertFalse($tool->isReadOnly());
         $this->assertArrayNotHasKey('outputSchema', $tool->toArray());
+    }
+
+    public function testItKeepsTheAnnotationsOfSubclasses(): void
+    {
+        config(['mcp-tools.tool' => IdempotentRouteTool::class]);
+
+        $tool = Arr::first(app(RouteToolDiscovery::class)->tools(), fn (RouteTool $tool) => $tool->name() === 'delete-widget');
+
+        $this->assertNotNull($tool);
+        $this->assertSame(['idempotentHint' => true, 'destructiveHint' => true], $tool->annotations());
     }
 
     public function testItDispatchesToTheRouteAndHidesInputAndOutput(): void
