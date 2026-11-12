@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Lier\McpTools\DispatchToRoute;
+use Lier\McpTools\Tests\Fixtures\ExposedDispatchToRoute;
 use Lier\McpTools\Tests\Fixtures\WidgetController;
 
 final class DispatchToRouteTest extends TestCase
@@ -138,5 +139,14 @@ final class DispatchToRouteTest extends TestCase
 
         $this->assertSame(7, Auth::guard('api')->id());
         $this->assertNull(Auth::guard('web')->id());
+    }
+
+    public function testItPassesDeleteArgumentsAsTheQueryString(): void
+    {
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets/1?a=1', 'DELETE', ['b' => 'x y']);
+
+        $this->assertSame('x y', $request->query('b'));
+        $this->assertSame('1', $request->query('a'));
+        $this->assertSame('x y', $request->input('b'));
     }
 }

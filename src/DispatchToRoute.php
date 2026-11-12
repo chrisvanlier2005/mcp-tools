@@ -123,10 +123,15 @@ class DispatchToRoute
     {
         $inQuery = in_array($method, [Request::METHOD_GET, Request::METHOD_DELETE], true);
 
+        // Symfony puts the parameters of a DELETE request in the form body, which JSON requests discard.
+        if ($inQuery && $parameters !== []) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($parameters);
+        }
+
         $request = Request::create(
             uri: $url,
             method: $method,
-            parameters: $inQuery ? $parameters : [],
+            parameters: [],
             server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
             content: $inQuery ? null : json_encode($parameters, JSON_THROW_ON_ERROR),
         );
