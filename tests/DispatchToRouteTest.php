@@ -3,6 +3,7 @@
 namespace Lier\McpTools\Tests;
 
 use Illuminate\Auth\GenericUser;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -186,5 +187,18 @@ final class DispatchToRouteTest extends TestCase
             ->assertExactJson(['marked' => true]);
 
         $this->assertSame($original, RequestFacade::instance());
+    }
+
+    public function testItKeepsTheClientsAddressAndUserAgent(): void
+    {
+        app()->instance('request', Request::create('http://localhost/mcp', 'POST', server: [
+            'REMOTE_ADDR' => '203.0.113.9',
+            'HTTP_USER_AGENT' => 'McpClient/1.0',
+        ]));
+
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets', 'GET', []);
+
+        $this->assertSame('203.0.113.9', $request->ip());
+        $this->assertSame('McpClient/1.0', $request->userAgent());
     }
 }

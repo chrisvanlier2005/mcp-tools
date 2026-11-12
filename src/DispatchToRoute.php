@@ -158,7 +158,7 @@ class DispatchToRoute
             uri: $url,
             method: $method,
             parameters: [],
-            server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+            server: [...$this->clientServer(), 'HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
             // An empty string, as null makes Laravel read the real php://input, i.e. the MCP request.
             content: $inQuery ? '' : json_encode($parameters, JSON_THROW_ON_ERROR),
         );
@@ -166,6 +166,25 @@ class DispatchToRoute
         $request->attributes->set(self::REQUEST_ATTRIBUTE, true);
 
         return $request;
+    }
+
+    /**
+     * Get the client's address, user agent and language from the current request, e.g. for logging and throttling.
+     *
+     * @return array<string, string>
+     */
+    protected function clientServer(): array
+    {
+        $server = Container::getInstance()->make('request')->server;
+
+        return array_filter(
+            [
+                'REMOTE_ADDR' => $server->get('REMOTE_ADDR'),
+                'HTTP_USER_AGENT' => $server->get('HTTP_USER_AGENT'),
+                'HTTP_ACCEPT_LANGUAGE' => $server->get('HTTP_ACCEPT_LANGUAGE'),
+            ],
+            is_string(...),
+        );
     }
 
     /**
