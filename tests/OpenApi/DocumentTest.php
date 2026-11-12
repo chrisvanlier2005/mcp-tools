@@ -76,6 +76,13 @@ final class DocumentTest extends TestCase
         }
     }
 
+    public function testItFindsOperationsOfOptionalParameters(): void
+    {
+        $document = new Document(new Schema(['paths' => ['/tasks/{taskId}' => ['get' => ['summary' => 'Show']]]]));
+
+        $this->assertSame('Show', $document->findOperation('GET', '/tasks/{task_id?}')?->summary);
+    }
+
     public function testItFailsForUndocumentedOperations(): void
     {
         try {

@@ -80,7 +80,14 @@ final readonly class Document
         // Scramble names path parameters after the action's arguments, so "{project_phase}" is documented as "{projectPhase}".
         $camelPath = preg_replace_callback('/\{(\w+)(\??)\}/', fn (array $match) => '{' . Str::camel($match[1]) . $match[2] . '}', $path);
 
-        $operation = ($paths?->schema($path) ?? $paths?->schema((string) $camelPath))?->schema(strtolower($method));
+        // OpenAPI documents an optional parameter "{param?}" as "{param}".
+        $requiredPath = str_replace('?}', '}', $path);
+        $camelRequiredPath = str_replace('?}', '}', (string) $camelPath);
+
+        $operation = ($paths?->schema($path)
+            ?? $paths?->schema((string) $camelPath)
+            ?? $paths?->schema($requiredPath)
+            ?? $paths?->schema($camelRequiredPath))?->schema(strtolower($method));
 
         return is_null($operation) ? null : Operation::from($operation);
     }
