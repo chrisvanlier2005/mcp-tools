@@ -10,6 +10,7 @@ use Lier\McpTools\Exceptions\McpToolCacheException;
 use Lier\McpTools\RouteTool;
 use Lier\McpTools\RouteToolCache;
 use Lier\McpTools\RouteToolDiscovery;
+use Lier\McpTools\Tests\Fixtures\InvokableController;
 use Lier\McpTools\Tests\Fixtures\RestrictedRouteTool;
 use Lier\McpTools\Tests\Fixtures\WidgetController;
 
@@ -207,5 +208,147 @@ final class RouteToolDiscoveryTest extends TestCase
         config(['mcp-tools.tool' => RestrictedRouteTool::class]);
 
         $this->assertContainsOnlyInstancesOf(RestrictedRouteTool::class, app(RouteToolDiscovery::class)->tools());
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    private function documentWithPaths(array $paths): string
+    {
+        $document = [];
+
+        foreach ($paths as $path) {
+            $document[$path] = ['get' => ['summary' => "Summary of {$path}"]];
+        }
+
+        $file = sys_get_temp_dir() . '/mcp-tools-openapi-' . bin2hex(random_bytes(4)) . '.json';
+        file_put_contents($file, json_encode(['paths' => $document]));
+
+        return $file;
+    }
+
+    public function testItMakesToolsOfInvokableControllers(): void
+    {
+        Route::get('ping', InvokableController::class);
+        Exceptions::fake();
+
+        $document = $this->documentWithPaths(['/ping']);
+
+        try {
+            $tools = new RouteToolDiscovery(
+                app(Router::class),
+                new RouteToolCache(sys_get_temp_dir() . '/missing-mcp-tools.php'),
+                $document,
+                useCache: false,
+            )->tools();
+        } finally {
+            unlink($document);
+        }
+
+        $this->assertSame(['ping'], array_map(fn (RouteTool $tool) => $tool->name(), $tools));
+        $this->assertSame('Summary of /ping', $tools[0]->toArray()['title'] ?? null);
+    }
+
+    public function testItMakesAToolForEveryRouteOfTheSameAction(): void
+    {
+        Route::get('widgets-copy', [WidgetController::class, 'index']);
+        Exceptions::fake();
+
+        $document = $this->documentWithPaths(['/widgets', '/widgets-copy']);
+
+        try {
+            $discovery = new RouteToolDiscovery(
+                app(Router::class),
+                new RouteToolCache(sys_get_temp_dir() . '/missing-mcp-tools.php'),
+                $document,
+                useCache: false,
+            );
+
+            $titles = array_map(fn (RouteTool $tool) => $tool->toArray()['title'] ?? null, $discovery->tools());
+        } finally {
+            unlink($document);
+        }
+
+        $this->assertSame(['Summary of /widgets', 'Summary of /widgets-copy'], $titles);
+    }
+
+    public function testItIgnoresTheCacheWhenToldNotTo(): void
+    {
+        $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4)) . '.php';
+        $cache = new RouteToolCache($path);
+
+        file_put_contents($path, '<?php return ' . var_export([[
+            'action' => WidgetController::class . '@index',
+            'uri' => 'widgets',
+            'method' => 'GET',
+            'attribute' => ['name' => 'cached-widgets'],
+            'title' => 'Cached title',
+            'description' => 'Cached.',
+            'inputSchema' => ['type' => 'object'],
+            'outputSchema' => null,
+        ]], true) . ';');
+
+        try {
+            $cached = new RouteToolDiscovery(app(Router::class), $cache, self::DOCUMENT)->tools();
+            $live = new RouteToolDiscovery(app(Router::class), $cache, self::DOCUMENT, useCache: false)->tools();
+        } finally {
+            unlink($path);
+        }
+
+        $this->assertSame(['cached-widgets'], array_map(fn (RouteTool $tool) => $tool->name(), $cached));
+        $this->assertSame('Cached title', $cached[0]->toArray()['title'] ?? null);
+        $this->assertCount(5, $live);
+        $this->assertSame('get-widgets', $live[0]->name());
+    }
+
+    public function testItKeepsDuplicateToolNamesSilently(): void
+    {
+        // Documents current behaviour: nothing checks that tool names are unique.
+        Route::get('widgets-copy', [WidgetController::class, 'index']);
+        Exceptions::fake();
+
+        $document = $this->documentWithPaths(['/widgets', '/widgets-copy']);
+
+        try {
+            $names = array_map(
+                fn (RouteTool $tool) => $tool->name(),
+                new RouteToolDiscovery(
+                    app(Router::class),
+                    new RouteToolCache(sys_get_temp_dir() . '/missing-mcp-tools.php'),
+                    $document,
+                    useCache: false,
+                )->tools(),
+            );
+        } finally {
+            unlink($document);
+        }
+
+        $this->assertSame(['get-widgets', 'get-widgets'], $names);
+    }
+
+    public function testItCountsTheCachedDefinitions(): void
+    {
+        $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4)) . '.php';
+        $cache = new RouteToolCache($path);
+
+        try {
+            $this->assertSame(5, new RouteToolDiscovery(app(Router::class), $cache, self::DOCUMENT)->cache());
+            $this->assertCount(5, $cache->get() ?? []);
+        } finally {
+            $cache->clear();
+        }
+    }
+
+    public function testItFailsToCacheWhenTheDocumentationIsMissing(): void
+    {
+        $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4)) . '.php';
+
+        try {
+            new RouteToolDiscovery(app(Router::class), new RouteToolCache($path), __DIR__ . '/Fixtures/missing.json')->cache();
+
+            $this->fail('Expected an exception.');
+        } catch (McpToolCacheException) {
+            $this->assertFileDoesNotExist($path);
+        }
     }
 }

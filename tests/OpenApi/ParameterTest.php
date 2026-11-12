@@ -49,4 +49,36 @@ final class ParameterTest extends TestCase
         $this->assertSame($schema, new Parameter('page', 'query', false, 'The page', $schema)->describedSchema());
         $this->assertSame($schema, new Parameter('page', 'query', false, null, $schema)->describedSchema());
     }
+
+    public function testItOnlyTreatsATrueBooleanAsRequired(): void
+    {
+        foreach (['true', 1, 'yes', null] as $required) {
+            $this->assertFalse(Parameter::from(new Schema(['name' => 'x', 'required' => $required]))->required);
+        }
+    }
+
+    public function testItIgnoresValuesOfTheWrongType(): void
+    {
+        $parameter = Parameter::from(new Schema(['name' => 5, 'in' => ['path'], 'description' => 1, 'schema' => 'string']));
+
+        $this->assertSame('', $parameter->name);
+        $this->assertSame('', $parameter->in);
+        $this->assertNull($parameter->description);
+        $this->assertSame([], $parameter->schema->schema);
+    }
+
+    public function testItDescribesAnEmptySchema(): void
+    {
+        $parameter = new Parameter('page', 'query', false, 'The page', new Schema());
+
+        $this->assertSame(['description' => 'The page'], $parameter->describedSchema()->schema);
+        $this->assertSame([], $parameter->schema->schema, 'The parameter keeps its own schema.');
+    }
+
+    public function testItTreatsANonStringSchemaDescriptionAsUnset(): void
+    {
+        $parameter = new Parameter('page', 'query', false, 'The page', new Schema(['description' => ['x']]));
+
+        $this->assertSame('The page', $parameter->describedSchema()->schema['description']);
+    }
 }

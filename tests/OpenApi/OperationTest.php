@@ -114,4 +114,128 @@ final class OperationTest extends TestCase
     {
         $this->assertNull(new Operation(null, null, [], null, null)->outputSchema(new Document(new Schema())));
     }
+
+    public function testItHasNoResponseWithoutASuccessfulJsonResponse(): void
+    {
+        $operation = Operation::from(new Schema([
+            'responses' => [
+                '200' => ['content' => ['text/plain' => ['schema' => ['type' => 'string']]]],
+                '204' => ['description' => 'No content'],
+                '422' => ['content' => ['application/json' => ['schema' => ['title' => 'Error']]]],
+                'default' => ['content' => ['application/json' => ['schema' => ['title' => 'Default']]]],
+            ],
+        ]));
+
+        $this->assertNull($operation->response);
+        $this->assertNull($operation->requestBody);
+        $this->assertSame([], $operation->parameters);
+        $this->assertNull($operation->summary);
+        $this->assertNull(new Operation(null, null, [], null, null)->outputSchema(new Document(new Schema())));
+    }
+
+    public function testItTakesTheFirstSuccessfulJsonResponse(): void
+    {
+        $operation = Operation::from(new Schema([
+            'responses' => [
+                '201' => ['content' => ['application/json' => ['schema' => ['title' => 'Created']]]],
+                '200' => ['content' => ['application/json' => ['schema' => ['title' => 'Ok']]]],
+            ],
+        ]));
+
+        $this->assertSame(['title' => 'Created'], $operation->response?->schema);
+    }
+
+    public function testItIgnoresANonJsonRequestBody(): void
+    {
+        $operation = Operation::from(new Schema([
+            'requestBody' => ['content' => ['multipart/form-data' => ['schema' => ['type' => 'object']]]],
+        ]));
+
+        $this->assertNull($operation->requestBody);
+    }
+
+    public function testItIgnoresHeaderAndCookieParameters(): void
+    {
+        $operation = Operation::from(new Schema(['parameters' => [
+            ['name' => 'X-Trace', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'string']],
+            ['name' => 'session', 'in' => 'cookie', 'schema' => ['type' => 'string']],
+            ['name' => 'page', 'in' => 'query', 'schema' => ['type' => 'integer']],
+        ]]));
+
+        $input = $operation->inputSchema(new Document(new Schema()));
+
+        $this->assertSame(['page'], array_keys($input->properties()));
+        $this->assertSame([], $input->required());
+    }
+
+    public function testItHidesInputParametersAndBodyProperties(): void
+    {
+        $document = new Document(new Schema(['components' => ['schemas' => ['Body' => [
+            'type' => 'object',
+            'properties' => ['name' => ['type' => 'string'], 'secret' => ['type' => 'string'], 'note' => ['type' => 'string']],
+            'required' => ['name', 'secret'],
+        ]]]]));
+
+        $operation = Operation::from(new Schema([
+            'parameters' => [
+                ['name' => 'household', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']],
+                ['name' => 'include', 'in' => 'query', 'schema' => ['type' => 'string']],
+            ],
+            'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Body']]]],
+        ]));
+
+        $input = $operation->inputSchema($document, ['household', 'secret']);
+
+        $this->assertSame(['include', 'name', 'note'], array_keys($input->properties()));
+        $this->assertSame(['name'], $input->required());
+    }
+
+    public function testItLetsABodyPropertyOverrideAParameterOfTheSameName(): void
+    {
+        $operation = Operation::from(new Schema([
+            'parameters' => [
+                ['name' => 'name', 'in' => 'query', 'required' => true, 'description' => 'Query', 'schema' => ['type' => 'integer']],
+            ],
+            'requestBody' => ['content' => ['application/json' => ['schema' => [
+                'type' => 'object',
+                'properties' => ['name' => ['type' => 'string']],
+                'required' => ['name'],
+            ]]]],
+        ]));
+
+        $input = $operation->inputSchema(new Document(new Schema()));
+
+        $this->assertSame(['name' => ['type' => 'string']], $input->schema['properties']);
+        $this->assertSame(['name'], $input->required(), 'A name required twice is listed once.');
+    }
+
+    public function testItKeepsTheRequiredParametersOfAnOperationWithoutBodyProperties(): void
+    {
+        $operation = Operation::from(new Schema([
+            'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'description' => 'The id']],
+            'requestBody' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+        ]));
+
+        $input = $operation->inputSchema(new Document(new Schema()));
+
+        $this->assertSame(['id' => ['description' => 'The id']], $input->schema['properties']);
+        $this->assertSame(['id'], $input->required());
+    }
+
+    public function testItHidesOutputPropertiesAlongPaths(): void
+    {
+        $document = new Document(new Schema());
+        $operation = new Operation(null, null, [], null, new Schema([
+            'type' => 'object',
+            'properties' => [
+                'data' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['a' => [], 'b' => []]]],
+                'meta' => ['type' => 'object'],
+            ],
+        ]));
+
+        $output = $operation->outputSchema($document, ['data.*.a', 'meta']);
+
+        $this->assertSame(['data'], array_keys($output?->properties() ?? []));
+        $this->assertSame(['b'], array_keys($output?->properties()['data']->schema('items')?->properties() ?? []));
+    }
 }
