@@ -8,12 +8,15 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Contracts\Validation\Factory as ValidatorFactory;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Dispatches a tool call to its route. Bind a subclass in the container to customize it.
@@ -74,7 +77,30 @@ class DispatchToRoute
         $url = $this->url($route, $arguments);
         $request = $this->makeRequest($url, $method, Arr::except($arguments, $this->parameterNames($route)));
 
+        // The URL is matched again by the router, so make sure it still reaches this route.
+        if (!$this->reaches($route, $request)) {
+            return new JsonResponse(['message' => 'The route could not be matched.'], 404);
+        }
+
         return $this->dispatchAs($request, $user);
+    }
+
+    /**
+     * Determine whether the request matches the given route, and not e.g. a sibling route registered before it.
+     *
+     * @param \Illuminate\Routing\Route $route
+     * @param \Illuminate\Http\Request $request
+     * @return bool
+     */
+    protected function reaches(Route $route, Request $request): bool
+    {
+        try {
+            $matched = $this->router->getRoutes()->match($request);
+        } catch (HttpException) {
+            return false;
+        }
+
+        return $matched->getActionName() === $route->getActionName() && $matched->uri() === $route->uri();
     }
 
     /**
@@ -123,17 +149,42 @@ class DispatchToRoute
     {
         $inQuery = in_array($method, [Request::METHOD_GET, Request::METHOD_DELETE], true);
 
+        // Symfony puts the parameters of a DELETE request in the form body, which JSON requests discard.
+        if ($inQuery && $parameters !== []) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($parameters);
+        }
+
         $request = Request::create(
             uri: $url,
             method: $method,
-            parameters: $inQuery ? $parameters : [],
-            server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
-            content: $inQuery ? null : json_encode($parameters, JSON_THROW_ON_ERROR),
+            parameters: [],
+            server: [...$this->clientServer(), 'HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
+            // An empty string, as null makes Laravel read the real php://input, i.e. the MCP request.
+            content: $inQuery ? '' : json_encode($parameters, JSON_THROW_ON_ERROR),
         );
 
         $request->attributes->set(self::REQUEST_ATTRIBUTE, true);
 
         return $request;
+    }
+
+    /**
+     * Get the client's address, user agent and language from the current request, e.g. for logging and throttling.
+     *
+     * @return array<string, string>
+     */
+    protected function clientServer(): array
+    {
+        $server = Container::getInstance()->make('request')->server;
+
+        return array_filter(
+            [
+                'REMOTE_ADDR' => $server->get('REMOTE_ADDR'),
+                'HTTP_USER_AGENT' => $server->get('HTTP_USER_AGENT'),
+                'HTTP_ACCEPT_LANGUAGE' => $server->get('HTTP_ACCEPT_LANGUAGE'),
+            ],
+            is_string(...),
+        );
     }
 
     /**
@@ -159,12 +210,23 @@ class DispatchToRoute
         // Form requests are resolved from the container's request, so swap it for the duration of the dispatch.
         $container = Container::getInstance();
         $originalRequest = $container->make('request');
+        $originalRoute = $container->bound(Route::class) ? $container->make(Route::class) : null;
         $container->instance('request', $request);
+        Facade::clearResolvedInstance('request');
 
         try {
             return $this->router->dispatch($request);
         } finally {
             $container->instance('request', $originalRequest);
+            Facade::clearResolvedInstance('request');
+
+            // The router has no setter for its current route, which stays the tool's route.
+            if (is_null($originalRoute)) {
+                $container->forgetInstance(Route::class);
+            } else {
+                $container->instance(Route::class, $originalRoute);
+            }
+
             $this->auth->shouldUse($defaultGuard);
         }
     }

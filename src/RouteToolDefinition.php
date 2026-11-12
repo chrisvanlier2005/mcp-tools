@@ -4,6 +4,7 @@ namespace Lier\McpTools;
 
 use Illuminate\Routing\Route;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Lier\McpTools\OpenApi\Document;
 use Lier\McpTools\OpenApi\Schema;
 use Webmozart\Assert\Assert;
@@ -57,7 +58,7 @@ final readonly class RouteToolDefinition
             ?? 'GET';
 
         $operation = $document->operation($method, $path);
-        $title = $attribute->title ?? $operation->summary ?? '';
+        $title = $attribute->title ?: $operation->summary ?: Str::headline($attribute->name);
         $outputSchema = $operation->outputSchema($document, $attribute->hideOutput);
 
         return new self(
@@ -66,7 +67,7 @@ final readonly class RouteToolDefinition
             method: $method,
             attribute: $attribute,
             title: $title,
-            description: $attribute->description ?? $operation->description ?? $title,
+            description: $attribute->description ?: $operation->description ?: $title,
             inputSchema: $document->resolve($operation->inputSchema($document, $attribute->hideInput)),
             outputSchema: is_null($outputSchema) ? null : $document->resolve($outputSchema),
         );

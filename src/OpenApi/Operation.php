@@ -121,6 +121,6 @@ final readonly class Operation
         }
 
         // MCP requires the output schema to describe an object.
-        return new Schema(['type' => 'object'])->merge($schema);
+        return new Schema(['type' => 'object'])->merge($schema)->with('type', 'object');
     }
 }

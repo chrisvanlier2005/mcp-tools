@@ -2,6 +2,7 @@
 
 namespace Lier\McpTools\Tests;
 
+use Lier\McpTools\Exceptions\McpToolCacheException;
 use Lier\McpTools\McpTool;
 use Lier\McpTools\OpenApi\Schema;
 use Lier\McpTools\RouteToolCache;
@@ -44,5 +45,12 @@ final class RouteToolCacheTest extends TestCase
 
         $this->assertFileDoesNotExist($path);
         $this->assertNull($cache->get());
+    }
+
+    public function testItFailsWhenTheCacheCantBeWritten(): void
+    {
+        $this->expectException(McpToolCacheException::class);
+
+        new RouteToolCache(sys_get_temp_dir() . '/missing-' . bin2hex(random_bytes(4)) . '/mcp-tools.php')->put([]);
     }
 }

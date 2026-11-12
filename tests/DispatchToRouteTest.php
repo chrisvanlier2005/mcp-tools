@@ -3,11 +3,15 @@
 namespace Lier\McpTools\Tests;
 
 use Illuminate\Auth\GenericUser;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Request as RequestFacade;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Lier\McpTools\DispatchToRoute;
+use Lier\McpTools\Tests\Fixtures\ExposedDispatchToRoute;
 use Lier\McpTools\Tests\Fixtures\WidgetController;
 
 final class DispatchToRouteTest extends TestCase
@@ -138,5 +142,63 @@ final class DispatchToRouteTest extends TestCase
 
         $this->assertSame(7, Auth::guard('api')->id());
         $this->assertNull(Auth::guard('web')->id());
+    }
+
+    public function testItPassesDeleteArgumentsAsTheQueryString(): void
+    {
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets/1?a=1', 'DELETE', ['b' => 'x y']);
+
+        $this->assertSame('x y', $request->query('b'));
+        $this->assertSame('1', $request->query('a'));
+        $this->assertSame('x y', $request->input('b'));
+    }
+
+    public function testBodilessRequestsHaveAnEmptyBody(): void
+    {
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets', 'GET', []);
+
+        $this->assertSame('', $request->getContent());
+        $this->assertSame([], $request->json()->all());
+    }
+
+    public function testItDoesNotDispatchToASiblingRoute(): void
+    {
+        $route = app(Router::class)->getRoutes()->getByAction(WidgetController::class . '@destroy');
+
+        $this->assertNotNull($route);
+
+        // "widgets/purge" is registered before "widgets/{widget}" and would be matched instead.
+        $response = app(DispatchToRoute::class)($route, 'DELETE', ['widget' => 'purge'], null);
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame(204, app(DispatchToRoute::class)($route, 'DELETE', ['widget' => '1'], null)->getStatusCode());
+    }
+
+    public function testTheRequestFacadeFollowsTheSwappedRequest(): void
+    {
+        $original = app('request');
+        $this->assertSame($original, RequestFacade::instance());
+
+        $facadeRoute = Arr::first(app(Router::class)->getRoutes()->getRoutes(), fn ($route) => $route->uri() === 'facade');
+
+        $this->assertNotNull($facadeRoute);
+
+        TestResponse::fromBaseResponse(app(DispatchToRoute::class)($facadeRoute, 'GET', [], null))
+            ->assertExactJson(['marked' => true]);
+
+        $this->assertSame($original, RequestFacade::instance());
+    }
+
+    public function testItKeepsTheClientsAddressAndUserAgent(): void
+    {
+        app()->instance('request', Request::create('http://localhost/mcp', 'POST', server: [
+            'REMOTE_ADDR' => '203.0.113.9',
+            'HTTP_USER_AGENT' => 'McpClient/1.0',
+        ]));
+
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets', 'GET', []);
+
+        $this->assertSame('203.0.113.9', $request->ip());
+        $this->assertSame('McpClient/1.0', $request->userAgent());
     }
 }

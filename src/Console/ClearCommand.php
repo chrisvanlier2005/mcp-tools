@@ -5,6 +5,7 @@ namespace Lier\McpTools\Console;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Lier\McpTools\Exceptions\McpToolCacheException;
 use Lier\McpTools\RouteToolCache;
 
 #[Signature('mcp-tools:clear')]
@@ -19,7 +20,14 @@ final class ClearCommand extends Command
      */
     public function handle(RouteToolCache $routeToolCache): int
     {
-        $routeToolCache->clear();
+        try {
+            $routeToolCache->clear();
+        } catch (McpToolCacheException $exception) {
+            $this->components->error('Could not clear the cached MCP route tools.');
+            $this->line($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->components->info('Cleared the cached MCP route tools.');
 

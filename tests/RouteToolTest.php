@@ -10,6 +10,8 @@ use Laravel\Mcp\ResponseFactory;
 use Lier\McpTools\DispatchToRoute;
 use Lier\McpTools\RouteTool;
 use Lier\McpTools\RouteToolDiscovery;
+use Lier\McpTools\Tests\Fixtures\FakeDispatchToRoute;
+use Lier\McpTools\Tests\Fixtures\IdempotentRouteTool;
 use Lier\McpTools\Tests\Fixtures\RestrictedRouteTool;
 
 final class RouteToolTest extends TestCase
@@ -40,6 +42,16 @@ final class RouteToolTest extends TestCase
         $this->assertSame(['destructiveHint' => true], $tool->annotations());
         $this->assertFalse($tool->isReadOnly());
         $this->assertArrayNotHasKey('outputSchema', $tool->toArray());
+    }
+
+    public function testItKeepsTheAnnotationsOfSubclasses(): void
+    {
+        config(['mcp-tools.tool' => IdempotentRouteTool::class]);
+
+        $tool = Arr::first(app(RouteToolDiscovery::class)->tools(), fn (RouteTool $tool) => $tool->name() === 'delete-widget');
+
+        $this->assertNotNull($tool);
+        $this->assertSame(['idempotentHint' => true, 'destructiveHint' => true], $tool->annotations());
     }
 
     public function testItDispatchesToTheRouteAndHidesInputAndOutput(): void
@@ -106,5 +118,22 @@ final class RouteToolTest extends TestCase
         $this->actingAs(new GenericUser(['id' => 1]));
 
         $this->assertTrue($write->eligibleForRegistration());
+    }
+
+    public function testItShapesSuccessfulBodiesForMcp(): void
+    {
+        $tool = Arr::first(app(RouteToolDiscovery::class)->tools(), fn (RouteTool $tool) => $tool->name() === 'get-widgets');
+
+        $this->assertNotNull($tool);
+
+        $fake = app(FakeDispatchToRoute::class);
+
+        foreach (['[]' => 'Done.', '{}' => 'Done.', '{"secret":1}' => 'Done.', 'OK' => 'OK', '"Done."' => '"Done."', '[1,2]' => '[1,2]'] as $body => $text) {
+            $fake->body = (string) $body;
+            $response = $tool->handle(new Request([]), $fake);
+
+            $this->assertInstanceOf(Response::class, $response, $body);
+            $this->assertSame($text, (string) $response->content(), $body);
+        }
     }
 }

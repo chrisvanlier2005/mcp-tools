@@ -33,6 +33,21 @@ final class RouteToolDefinitionTest extends TestCase
         $this->assertSame('Update asset', $definition->title);
     }
 
+    public function testItFallsBackFromEmptyTitlesAndDescriptions(): void
+    {
+        $route = new Route(['GET'], 'assets', [
+            'uses' => 'Lier\McpTools\Tests\Fixtures\WidgetController@index',
+            'controller' => 'Lier\McpTools\Tests\Fixtures\WidgetController@index',
+        ]);
+
+        $document = new Document(new Schema(['paths' => ['/assets' => ['get' => ['summary' => '', 'description' => '']]]]));
+
+        $definition = RouteToolDefinition::make($route, new McpTool('get-assets', title: '', description: ''), $document);
+
+        $this->assertSame('Get Assets', $definition->title);
+        $this->assertSame('Get Assets', $definition->description);
+    }
+
     public function testItFailsWhenNoneOfTheRouteMethodsIsDocumented(): void
     {
         $route = new Route(['PUT', 'PATCH'], 'assets/{asset}', [

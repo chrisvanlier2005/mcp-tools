@@ -58,14 +58,28 @@ class RouteTool extends Tool
             return Response::error($content !== '' ? $content : "Request failed with {$response->getStatusCode()}.");
         }
 
-        $data = $content !== '' ? json_decode($content, true, flags: JSON_THROW_ON_ERROR) : null;
-
-        if (!is_array($data)) {
+        if ($content === '') {
             return Response::text('Done.');
+        }
+
+        $data = json_decode($content, true);
+
+        // Not a JSON object or list, e.g. plain text or a scalar.
+        if (!is_array($data)) {
+            return Response::text($content);
         }
 
         foreach ($this->definition->attribute->hideOutput as $path) {
             data_forget($data, $path);
+        }
+
+        if ($data === []) {
+            return Response::text('Done.');
+        }
+
+        // The structured content must be an object.
+        if (array_is_list($data)) {
+            return Response::text(json_encode($data, JSON_THROW_ON_ERROR));
         }
 
         return Response::structured($data);
@@ -115,7 +129,7 @@ class RouteTool extends Tool
     #[Override]
     public function annotations(): array
     {
-        return $this->definition->attribute->annotations($this->definition->method);
+        return [...parent::annotations(), ...$this->definition->attribute->annotations($this->definition->method)];
     }
 
     /**

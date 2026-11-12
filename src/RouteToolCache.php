@@ -2,6 +2,7 @@
 
 namespace Lier\McpTools;
 
+use ErrorException;
 use Lier\McpTools\Exceptions\McpToolCacheException;
 use Webmozart\Assert\Assert;
 
@@ -53,12 +54,34 @@ final readonly class RouteToolCache
     {
         $definitions = array_map(fn (RouteToolDefinition $definition) => $definition->toArray(), $definitions);
 
-        // Write to a temporary file first, so MCP requests never read a partially written cache.
-        $temporaryPath = $this->path . '.tmp';
+        // Write to a unique temporary file first, so MCP requests never read a partially written cache.
+        $directory = dirname($this->path);
+
+        if (!is_writable($directory)) {
+            throw McpToolCacheException::unwritable($this->path);
+        }
 
         $contents = '<?php return ' . var_export($definitions, true) . ';' . PHP_EOL;
+        $temporaryPath = false;
 
-        if (file_put_contents($temporaryPath, $contents) === false || !rename($temporaryPath, $this->path)) {
+        try {
+            $temporaryPath = tempnam($directory, basename($this->path));
+
+            // tempnam() creates the file as 0600; the cache must stay readable for the web server.
+            $written = $temporaryPath !== false
+                && file_put_contents($temporaryPath, $contents) !== false
+                && chmod($temporaryPath, 0666 & ~umask())
+                && rename($temporaryPath, $this->path);
+        } catch (ErrorException) {
+            // Laravel's error handler turns the warnings of failed writes into exceptions.
+            $written = false;
+        }
+
+        if (!$written) {
+            if ($temporaryPath !== false) {
+                @unlink($temporaryPath);
+            }
+
             throw McpToolCacheException::unwritable($this->path);
         }
     }
@@ -71,7 +94,13 @@ final readonly class RouteToolCache
      */
     public function clear(): void
     {
-        if (file_exists($this->path) && !unlink($this->path)) {
+        try {
+            $removed = !file_exists($this->path) || unlink($this->path);
+        } catch (ErrorException) {
+            $removed = false;
+        }
+
+        if (!$removed) {
             throw McpToolCacheException::unwritable($this->path);
         }
     }
