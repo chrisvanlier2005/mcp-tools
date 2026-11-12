@@ -65,4 +65,21 @@ final class CacheCommandTest extends TestCase
             unlink($path);
         }
     }
+
+    public function testItFailsToClearACacheThatCantBeRemoved(): void
+    {
+        // Unlinking a directory fails, which Laravel's error handler raises as an ErrorException.
+        $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4));
+        mkdir($path);
+
+        app()->instance(RouteToolCache::class, new RouteToolCache($path));
+
+        try {
+            $this->assertInstanceOf(PendingCommand::class, $command = $this->artisan('mcp-tools:clear'));
+
+            $command->expectsOutputToContain('Could not clear the cached MCP route tools.')->assertFailed()->run();
+        } finally {
+            rmdir($path);
+        }
+    }
 }
