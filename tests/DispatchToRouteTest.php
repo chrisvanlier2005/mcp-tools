@@ -4,7 +4,9 @@ namespace Lier\McpTools\Tests;
 
 use Illuminate\Auth\GenericUser;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Request as RequestFacade;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Lier\McpTools\DispatchToRoute;
@@ -169,5 +171,20 @@ final class DispatchToRouteTest extends TestCase
 
         $this->assertSame(404, $response->getStatusCode());
         $this->assertSame(204, app(DispatchToRoute::class)($route, 'DELETE', ['widget' => '1'], null)->getStatusCode());
+    }
+
+    public function testTheRequestFacadeFollowsTheSwappedRequest(): void
+    {
+        $original = app('request');
+        $this->assertSame($original, RequestFacade::instance());
+
+        $facadeRoute = Arr::first(app(Router::class)->getRoutes()->getRoutes(), fn ($route) => $route->uri() === 'facade');
+
+        $this->assertNotNull($facadeRoute);
+
+        TestResponse::fromBaseResponse(app(DispatchToRoute::class)($facadeRoute, 'GET', [], null))
+            ->assertExactJson(['marked' => true]);
+
+        $this->assertSame($original, RequestFacade::instance());
     }
 }

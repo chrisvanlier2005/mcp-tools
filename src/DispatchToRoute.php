@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -190,12 +191,23 @@ class DispatchToRoute
         // Form requests are resolved from the container's request, so swap it for the duration of the dispatch.
         $container = Container::getInstance();
         $originalRequest = $container->make('request');
+        $originalRoute = $container->bound(Route::class) ? $container->make(Route::class) : null;
         $container->instance('request', $request);
+        Facade::clearResolvedInstance('request');
 
         try {
             return $this->router->dispatch($request);
         } finally {
             $container->instance('request', $originalRequest);
+            Facade::clearResolvedInstance('request');
+
+            // The router has no setter for its current route, which stays the tool's route.
+            if (is_null($originalRoute)) {
+                $container->forgetInstance(Route::class);
+            } else {
+                $container->instance(Route::class, $originalRoute);
+            }
+
             $this->auth->shouldUse($defaultGuard);
         }
     }

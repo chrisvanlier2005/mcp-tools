@@ -4,6 +4,8 @@ namespace Lier\McpTools\Tests;
 
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Support\Facades\Request as RequestFacade;
+use Lier\McpTools\DispatchToRoute;
 use Lier\McpTools\McpToolsServiceProvider;
 use Lier\McpTools\Tests\Fixtures\WidgetController;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -46,6 +48,7 @@ abstract class TestCase extends Orchestra
         $router->get('me', [WidgetController::class, 'me'])->middleware(Authenticate::class);
         $router->get('marker', [WidgetController::class, 'marker']);
         $router->get('plain', [WidgetController::class, 'plain']);
+        $router->get('facade', fn () => ['marked' => RequestFacade::instance()->attributes->get(DispatchToRoute::REQUEST_ATTRIBUTE)]);
         $router->get('closure', fn () => 'OK');
     }
 }
