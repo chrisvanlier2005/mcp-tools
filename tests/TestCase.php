@@ -41,6 +41,7 @@ abstract class TestCase extends Orchestra
         $router->get('widgets', [WidgetController::class, 'index']);
         $router->post('widgets', [WidgetController::class, 'store']);
         $router->get('widgets/{widget}', [WidgetController::class, 'show']);
+        $router->delete('widgets/purge', fn () => 'purged');
         $router->delete('widgets/{widget}', [WidgetController::class, 'destroy']);
         $router->get('me', [WidgetController::class, 'me'])->middleware(Authenticate::class);
         $router->get('marker', [WidgetController::class, 'marker']);

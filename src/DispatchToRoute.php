@@ -8,12 +8,14 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Contracts\Validation\Factory as ValidatorFactory;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Dispatches a tool call to its route. Bind a subclass in the container to customize it.
@@ -74,7 +76,30 @@ class DispatchToRoute
         $url = $this->url($route, $arguments);
         $request = $this->makeRequest($url, $method, Arr::except($arguments, $this->parameterNames($route)));
 
+        // The URL is matched again by the router, so make sure it still reaches this route.
+        if (!$this->reaches($route, $request)) {
+            return new JsonResponse(['message' => 'The route could not be matched.'], 404);
+        }
+
         return $this->dispatchAs($request, $user);
+    }
+
+    /**
+     * Determine whether the request matches the given route, and not e.g. a sibling route registered before it.
+     *
+     * @param \Illuminate\Routing\Route $route
+     * @param \Illuminate\Http\Request $request
+     * @return bool
+     */
+    protected function reaches(Route $route, Request $request): bool
+    {
+        try {
+            $matched = $this->router->getRoutes()->match($request);
+        } catch (HttpException) {
+            return false;
+        }
+
+        return $matched->getActionName() === $route->getActionName() && $matched->uri() === $route->uri();
     }
 
     /**

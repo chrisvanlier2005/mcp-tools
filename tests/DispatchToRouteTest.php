@@ -157,4 +157,17 @@ final class DispatchToRouteTest extends TestCase
         $this->assertSame('', $request->getContent());
         $this->assertSame([], $request->json()->all());
     }
+
+    public function testItDoesNotDispatchToASiblingRoute(): void
+    {
+        $route = app(Router::class)->getRoutes()->getByAction(WidgetController::class . '@destroy');
+
+        $this->assertNotNull($route);
+
+        // "widgets/purge" is registered before "widgets/{widget}" and would be matched instead.
+        $response = app(DispatchToRoute::class)($route, 'DELETE', ['widget' => 'purge'], null);
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame(204, app(DispatchToRoute::class)($route, 'DELETE', ['widget' => '1'], null)->getStatusCode());
+    }
 }
