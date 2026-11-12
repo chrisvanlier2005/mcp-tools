@@ -10,6 +10,7 @@ use Lier\McpTools\Exceptions\InvalidApiDocumentationException;
 use Lier\McpTools\Exceptions\McpToolCacheException;
 use Lier\McpTools\OpenApi\Document;
 use ReflectionMethod;
+use Throwable;
 
 /**
  * Finds the controller actions annotated with #[McpTool] and makes them into MCP tools.
@@ -46,7 +47,16 @@ final readonly class RouteToolDiscovery
      */
     public function tools(): array
     {
-        $definitions = $this->useCache ? $this->cache->get() : null;
+        $definitions = null;
+
+        if ($this->useCache) {
+            try {
+                $definitions = $this->cache->get();
+            } catch (Throwable $exception) {
+                // A cache in an old or foreign shape degrades like a stale route, instead of breaking every request.
+                report($exception);
+            }
+        }
 
         if (is_null($definitions)) {
             ['definitions' => $definitions, 'errors' => $errors] = $this->discover();

@@ -71,6 +71,25 @@ final class RouteToolDiscoveryTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
+    public function testItFallsBackToDiscoveryWhenTheCacheCantBeRead(): void
+    {
+        Exceptions::fake();
+
+        $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4)) . '.php';
+
+        try {
+            foreach (['<?php return [["attribute" => ["unknown" => 1]]];', '<?php return [', '<?php return "nope";'] as $contents) {
+                file_put_contents($path, $contents);
+
+                $tools = new RouteToolDiscovery(app(Router::class), new RouteToolCache($path), self::DOCUMENT)->tools();
+
+                $this->assertCount(5, $tools);
+            }
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function testItSkipsCachedToolsThatNoLongerMatchTheirRoute(): void
     {
         $path = sys_get_temp_dir() . '/mcp-tools-' . bin2hex(random_bytes(4)) . '.php';
