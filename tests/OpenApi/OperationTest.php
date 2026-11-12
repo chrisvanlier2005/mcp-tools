@@ -103,6 +103,13 @@ final class OperationTest extends TestCase
         ], $operation->outputSchema($document, hide: ['links'])?->schema);
     }
 
+    public function testItKeepsTheOutputSchemaAnObjectForDocumentedArrays(): void
+    {
+        $operation = new Operation(null, null, [], null, new Schema(['type' => 'array', 'items' => ['type' => 'string']]));
+
+        $this->assertSame('object', $operation->outputSchema(new Document(new Schema()))?->schema['type'] ?? null);
+    }
+
     public function testItHasNoOutputSchemaWithoutAJsonResponse(): void
     {
         $this->assertNull(new Operation(null, null, [], null, null)->outputSchema(new Document(new Schema())));
