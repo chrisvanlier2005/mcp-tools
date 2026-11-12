@@ -149,4 +149,12 @@ final class DispatchToRouteTest extends TestCase
         $this->assertSame('1', $request->query('a'));
         $this->assertSame('x y', $request->input('b'));
     }
+
+    public function testBodilessRequestsHaveAnEmptyBody(): void
+    {
+        $request = app(ExposedDispatchToRoute::class)->request('http://localhost/widgets', 'GET', []);
+
+        $this->assertSame('', $request->getContent());
+        $this->assertSame([], $request->json()->all());
+    }
 }

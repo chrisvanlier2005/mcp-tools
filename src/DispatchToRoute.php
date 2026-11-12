@@ -133,7 +133,8 @@ class DispatchToRoute
             method: $method,
             parameters: [],
             server: ['HTTP_ACCEPT' => 'application/json', 'CONTENT_TYPE' => 'application/json'],
-            content: $inQuery ? null : json_encode($parameters, JSON_THROW_ON_ERROR),
+            // An empty string, as null makes Laravel read the real php://input, i.e. the MCP request.
+            content: $inQuery ? '' : json_encode($parameters, JSON_THROW_ON_ERROR),
         );
 
         $request->attributes->set(self::REQUEST_ATTRIBUTE, true);
