@@ -95,4 +95,110 @@ final class SchemaTest extends TestCase
             json_encode($schema->toArray()),
         );
     }
+
+    public function testItDoesNotMutateWhenSettingSubSchemas(): void
+    {
+        $schema = new Schema(['type' => 'object', 'properties' => ['a' => ['type' => 'string']]]);
+
+        $changed = $schema->withSchemas('properties', ['b' => new Schema(['type' => 'integer'])]);
+
+        $this->assertSame(['b' => ['type' => 'integer']], $changed->schema['properties']);
+        $this->assertSame(['a' => ['type' => 'string']], $schema->schema['properties']);
+    }
+
+    public function testItLetsTheMergedSchemaWin(): void
+    {
+        $merged = new Schema(['type' => 'object', 'title' => 'A'])->merge(new Schema(['title' => 'B', 'format' => 'x']));
+
+        $this->assertSame(['type' => 'object', 'title' => 'B', 'format' => 'x'], $merged->schema);
+        $this->assertSame(['a' => 1], new Schema(['a' => 1])->without('missing')->schema);
+    }
+
+    public function testItReadsSubSchemasPreservingKeysAndSkippingScalars(): void
+    {
+        $schema = new Schema(['properties' => ['a' => ['type' => 'string'], 'b' => 'nope', 'c' => []], 'allOf' => 'nope']);
+
+        $this->assertSame(['a', 'c'], array_keys($schema->properties()));
+        $this->assertSame([], $schema->schemas('allOf'));
+        $this->assertSame([], $schema->schemas('missing'));
+        $this->assertNull($schema->schema('missing'));
+        $this->assertSame([], $schema->schema('properties')?->schema('c')?->schema);
+    }
+
+    public function testItReadsOnlyStringRequiredNames(): void
+    {
+        $this->assertSame(['a', 'c'], new Schema(['required' => ['a', 1, 'c', null]])->required());
+        $this->assertSame([], new Schema(['required' => 'a'])->required());
+        $this->assertSame([], new Schema()->required());
+    }
+
+    public function testItExportsEveryKeywordTable(): void
+    {
+        $ref = ['$ref' => '#/components/schemas/Task'];
+
+        $schema = new Schema([
+            'items' => $ref,
+            'additionalProperties' => [],
+            'not' => $ref,
+            'contains' => [],
+            'propertyNames' => $ref,
+            'if' => [],
+            'then' => $ref,
+            'else' => [],
+            'properties' => ['a' => $ref, 'b' => []],
+            'patternProperties' => ['^x' => $ref],
+            'dependentSchemas' => [],
+            '$defs' => ['Local' => $ref],
+            'allOf' => [$ref],
+            'anyOf' => [[], $ref],
+            'oneOf' => [$ref],
+            'prefixItems' => [$ref, []],
+            'additionalItems' => true,
+            'examples' => [['$ref' => 'x'], []],
+            'default' => ['nested' => []],
+        ]);
+
+        $this->assertSame(
+            '{"items":{"$ref":"#\/$defs\/Task"},"additionalProperties":{},"not":{"$ref":"#\/$defs\/Task"},"contains":{},'
+            . '"propertyNames":{"$ref":"#\/$defs\/Task"},"if":{},"then":{"$ref":"#\/$defs\/Task"},"else":{},'
+            . '"properties":{"a":{"$ref":"#\/$defs\/Task"},"b":{}},"patternProperties":{"^x":{"$ref":"#\/$defs\/Task"}},'
+            . '"dependentSchemas":{},"$defs":{"Local":{"$ref":"#\/$defs\/Task"}},"allOf":[{"$ref":"#\/$defs\/Task"}],'
+            . '"anyOf":[{},{"$ref":"#\/$defs\/Task"}],"oneOf":[{"$ref":"#\/$defs\/Task"}],'
+            . '"prefixItems":[{"$ref":"#\/$defs\/Task"},{}],"additionalItems":true,'
+            . '"examples":[{"$ref":"x"},[]],"default":{"nested":[]}}',
+            json_encode($schema->toArray()),
+        );
+    }
+
+    public function testItFindsReferencesInsideListsAndIgnoresNonLocalReferences(): void
+    {
+        $schema = new Schema([
+            'allOf' => [['$ref' => '#/components/schemas/A'], ['$ref' => 'https://example.com/schema.json']],
+            'properties' => ['b' => ['oneOf' => [['$ref' => '#/components/schemas/B']]]],
+            '$ref' => '#/components/schemas/C',
+            'example' => ['$ref' => 42],
+        ]);
+
+        $this->assertSame(['A', 'B', 'C'], $schema->references());
+        $this->assertSame([], new Schema()->references());
+    }
+
+    public function testItReadsSchemasFromListsAndStringifiesKeys(): void
+    {
+        $schema = Schema::from(['a', 'b']);
+
+        $this->assertSame(['0' => 'a', '1' => 'b'], $schema?->schema);
+        $this->assertSame([], Schema::from([])?->schema);
+        $this->assertNull(Schema::from('x'));
+        $this->assertNull(Schema::from(null));
+    }
+
+    public function testItReadsStringsOnly(): void
+    {
+        $schema = new Schema(['a' => 'x', 'b' => 1]);
+
+        $this->assertSame('x', $schema->string('a'));
+        $this->assertNull($schema->string('b'));
+        $this->assertNull($schema->string('c'));
+    }
 }
